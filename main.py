@@ -30,11 +30,12 @@ if cookie_data:
     with open(COOKIE_FILE, "w") as f:
         f.write(cookie_data)
 
-# --- THE STREAMING ENGINE ---
+# --- THE STREAMING ENGINE (FIXED FOR RAILWAY) ---
 def get_audio_stream(q):
     opts = {
-        # 'best' is the key here - it grabs whatever is available first
-        'format': 'best', 
+        # 'worst' is the secret. YouTube rarely blocks low-quality video streams.
+        # Telegram will still play it as audio.
+        'format': 'bestaudio/worstvideo/best', 
         'quiet': True,
         'no_warnings': True,
         'default_search': 'ytsearch1',
@@ -44,12 +45,10 @@ def get_audio_stream(q):
         'cookiefile': COOKIE_FILE if os.path.exists(COOKIE_FILE) else None,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': '*/*',
-            'Connection': 'keep-alive',
         }
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
-        # Search for the song + official audio
+        # We search specifically for official audio to keep it clean
         info = ydl.extract_info(f"ytsearch1:{q} official audio", download=False)
         if 'entries' in info:
             info = info['entries'][0]
@@ -60,22 +59,20 @@ async def start_cmd(u: Update, c: ContextTypes.DEFAULT_TYPE):
     await u.message.reply_text(WELCOME, parse_mode='Markdown')
 
 async def handle_everything(u: Update, c: ContextTypes.DEFAULT_TYPE):
-    # Safety checks
     if not u.message or not u.message.text: return
     text = u.message.text.strip()
-    
-    # Skip if it's just the start command
     if text.lower().startswith("/start"): return
 
-    # Clean the query (handles !, /, #, get, or plain text)
+    # Clean query for all prefixes
     query = re.sub(r'^[!/#]|^get\s+|^lr\s+', '', text, flags=re.IGNORECASE).strip()
     if not query: return
     
     try:
-        # We don't send any "Searching" text for max speed
+        # Fetching direct link
         stream_url, title, artist = await asyncio.to_thread(get_audio_stream, query)
         
         if stream_url:
+            # We use reply_audio so Telegram hides the video and shows the music player
             await u.message.reply_audio(
                 audio=stream_url, 
                 title=title, 
@@ -84,21 +81,18 @@ async def handle_everything(u: Update, c: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown'
             )
     except Exception as e:
-        print(f"Fetch Error: {e}")
+        print(f"Railway Block Error: {e}")
 
 # --- EXECUTION ---
 async def main():
     threading.Thread(target=run, daemon=True).start()
-    
-    # drop_pending_updates=True is CRITICAL to stop the 'Conflict' error
     bot = Application.builder().token(TOKEN).build()
     
-    # Order matters: check for /start first, then catch everything else
     bot.add_handler(CommandHandler("start", start_cmd))
-    bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_everything))
-    bot.add_handler(MessageHandler(filters.COMMAND, handle_everything)) # Catches /get, !get, etc.
+    # Combined filter to handle everything: text, commands, and prefixes
+    bot.add_handler(MessageHandler(filters.TEXT, handle_everything))
     
-    print("ULTRA-SPEED HYBRID ACTIVE ----")
+    print("RAILWAY-OPTIMIZED MODE ACTIVE ----")
     print("Dev -> @FUCXD")
 
     await bot.initialize()
