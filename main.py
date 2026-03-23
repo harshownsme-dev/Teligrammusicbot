@@ -9,7 +9,7 @@ app = Flask(__name__)
 def h(): return "Bot Active"
 def run(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 
-# --- FAST-INSTALLER ---
+# --- AUTO-INSTALLER ---
 def init():
     for lib in ['python-telegram-bot', 'yt-dlp', 'flask']:
         try: __import__(lib.replace('-', '_'))
@@ -21,7 +21,14 @@ import yt_dlp
 # --- CONFIG ---
 TOKEN = os.environ.get('BOT_TOKEN') or '8595967891:AAHS1PE2om3824-l1ualhUNSQhe7MyNavVw'
 CREDIT = "***Developed by [ @FUCXD ]💀***"
-WELCOME_MSG = "***Bot alive Devloper -> [ @FUCXD ]💀***"
+WELCOME = "***Bot alive Devloper -> [ @FUCXD ]💀***"
+
+# --- COOKIE HANDLER ---
+COOKIE_FILE = "cookies.txt"
+cookie_data = os.environ.get("COOKIES_CONTENT")
+if cookie_data:
+    with open(COOKIE_FILE, "w") as f:
+        f.write(cookie_data)
 
 # --- THE STREAMING ENGINE ---
 def get_audio_stream(q):
@@ -32,7 +39,8 @@ def get_audio_stream(q):
         'default_search': 'ytsearch1',
         'nocheckcertificate': True,
         'geo_bypass': True,
-        'skip_download': True, 
+        'skip_download': True,
+        'cookiefile': COOKIE_FILE if os.path.exists(COOKIE_FILE) else None,
         'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36'}
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
@@ -42,25 +50,24 @@ def get_audio_stream(q):
 
 # --- HANDLERS ---
 async def start_cmd(u: Update, c: ContextTypes.DEFAULT_TYPE):
-    # Only /start gives a text message
-    await u.message.reply_text(WELCOME_MSG, parse_mode='Markdown')
+    await u.message.reply_text(WELCOME, parse_mode='Markdown')
 
 async def handle_request(u: Update, c: ContextTypes.DEFAULT_TYPE):
     if not u.message or not u.message.text: return
     raw_text = u.message.text.strip()
-
-    # Ignore /start here so it doesn't try to download a song named "start"
+    
+    # Ignore /start command here
     if raw_text.lower().startswith("/start"): return
 
-    # Clean the query: handles !, /, #, get, lr, or plain text
+    # Clean the query (handles !, /, get, etc.)
     query = re.sub(r'^[!/#]|^get\s+|^lr\s+', '', raw_text, flags=re.IGNORECASE).strip()
     if not query: return
     
     try:
-        # Direct Fetch
+        # Direct stream fetch
         stream_url, title, art = await asyncio.to_thread(get_audio_stream, query)
         
-        # Directly send audio with ZERO status text before it
+        # Send audio directly
         await u.message.reply_audio(
             audio=stream_url, 
             title=title, 
@@ -69,7 +76,6 @@ async def handle_request(u: Update, c: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
     except:
-        # Silent fail to keep the chat clean
         pass
 
 # --- EXECUTION ---
@@ -77,20 +83,17 @@ async def main():
     threading.Thread(target=run, daemon=True).start()
     bot = Application.builder().token(TOKEN).build()
     
-    # Specific handler for Start
     bot.add_handler(CommandHandler("start", start_cmd))
-    
-    # Universal handler for everything else (Commands + Text)
     bot.add_handler(MessageHandler(filters.TEXT, handle_request))
     
-    print("Zero-Fluff Mode Active ----")
+    print("Zero-Fluff + Cookies Active ----")
     print("Dev -> @FUCXD")
 
     await bot.initialize()
     await bot.start()
-    await bot.updater.start_polling(drop_pending_updates=True)
+    await bot.updater.start_polling(drop_pending_updates=True) # Kills session conflicts
     while True: await asyncio.sleep(10)
 
 if __name__ == '__main__':
     asyncio.run(main())
-        
+    
