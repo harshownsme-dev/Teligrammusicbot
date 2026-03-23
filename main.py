@@ -23,32 +23,31 @@ TOKEN = os.environ.get('BOT_TOKEN') or '8595967891:AAHS1PE2om3824-l1ualhUNSQhe7M
 CREDIT = "***Developed by [ @FUCXD ]💀***"
 WELCOME = "***Bot alive Devloper -> [ @FUCXD ]💀***"
 
-# --- COOKIE HANDLER ---
-COOKIE_FILE = "cookies.txt"
-cookie_data = os.environ.get("COOKIES_CONTENT")
-if cookie_data:
-    with open(COOKIE_FILE, "w") as f:
-        f.write(cookie_data)
-
-# --- THE STREAMING ENGINE (FIXED FOR RAILWAY) ---
+# --- THE STREAMING ENGINE (MOBILE CLIENT HACK) ---
 def get_audio_stream(q):
     opts = {
-        # 'worst' is the secret. YouTube rarely blocks low-quality video streams.
-        # Telegram will still play it as audio.
-        'format': 'bestaudio/worstvideo/best', 
+        # 'best' is safer than 'bestaudio' on blocked IPs
+        'format': 'best', 
         'quiet': True,
         'no_warnings': True,
         'default_search': 'ytsearch1',
         'nocheckcertificate': True,
         'geo_bypass': True,
         'skip_download': True,
-        'cookiefile': COOKIE_FILE if os.path.exists(COOKIE_FILE) else None,
+        # THE NUCLEAR OPTION: Forces yt-dlp to pretend it's an Android Phone
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android'],
+                'skip': ['webpage', 'player_js']
+            }
+        },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'User-Agent': 'com.google.android.youtube/19.05.36 (Linux; U; Android 11; en_US; Pixel 4) gzip',
+            'Accept': '*/*',
+            'Connection': 'keep-alive',
         }
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
-        # We search specifically for official audio to keep it clean
         info = ydl.extract_info(f"ytsearch1:{q} official audio", download=False)
         if 'entries' in info:
             info = info['entries'][0]
@@ -63,16 +62,13 @@ async def handle_everything(u: Update, c: ContextTypes.DEFAULT_TYPE):
     text = u.message.text.strip()
     if text.lower().startswith("/start"): return
 
-    # Clean query for all prefixes
     query = re.sub(r'^[!/#]|^get\s+|^lr\s+', '', text, flags=re.IGNORECASE).strip()
     if not query: return
     
     try:
-        # Fetching direct link
         stream_url, title, artist = await asyncio.to_thread(get_audio_stream, query)
         
         if stream_url:
-            # We use reply_audio so Telegram hides the video and shows the music player
             await u.message.reply_audio(
                 audio=stream_url, 
                 title=title, 
@@ -81,20 +77,16 @@ async def handle_everything(u: Update, c: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown'
             )
     except Exception as e:
-        print(f"Railway Block Error: {e}")
+        # If it still fails, the IP is hard-blocked. 
+        print(f"CRITICAL BLOCK: {e}")
 
 # --- EXECUTION ---
 async def main():
     threading.Thread(target=run, daemon=True).start()
     bot = Application.builder().token(TOKEN).build()
-    
     bot.add_handler(CommandHandler("start", start_cmd))
-    # Combined filter to handle everything: text, commands, and prefixes
     bot.add_handler(MessageHandler(filters.TEXT, handle_everything))
     
-    print("RAILWAY-OPTIMIZED MODE ACTIVE ----")
-    print("Dev -> @FUCXD")
-
     await bot.initialize()
     await bot.start()
     await bot.updater.start_polling(drop_pending_updates=True)
