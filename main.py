@@ -3,13 +3,11 @@ from flask import Flask
 from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 
-# --- RAILWAY 24/7 ---
 app = Flask(__name__)
 @app.route('/')
 def h(): return "Active"
 def run(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 
-# --- AUTO-INSTALLER ---
 def init():
     for lib in ['python-telegram-bot', 'yt-dlp', 'flask']:
         try: __import__(lib.replace('-', '_'))
@@ -18,42 +16,37 @@ def init():
 init()
 import yt_dlp
 
-# --- CONFIG ---
 TOKEN = os.environ.get('BOT_TOKEN') or '8595967891:AAHS1PE2om3824-l1ualhUNSQhe7MyNavVw'
 CREDIT = "***Developed by [ @FUCXD ]💀***"
 WELCOME = "***Bot alive Devloper -> [ @FUCXD ]💀***"
 
-# --- THE STREAMING ENGINE (MOBILE CLIENT HACK) ---
 def get_audio_stream(q):
+    # Try SoundCloud first because YouTube is blocking Railway IPs
+    # We use 'scsearch' for SoundCloud and 'ytsearch' as backup
+    search_queries = [f"scsearch1:{q}", f"ytsearch1:{q} official audio"]
+    
     opts = {
-        # 'best' is safer than 'bestaudio' on blocked IPs
-        'format': 'best', 
+        'format': 'bestaudio/best',
         'quiet': True,
         'no_warnings': True,
-        'default_search': 'ytsearch1',
         'nocheckcertificate': True,
         'geo_bypass': True,
         'skip_download': True,
-        # THE NUCLEAR OPTION: Forces yt-dlp to pretend it's an Android Phone
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android'],
-                'skip': ['webpage', 'player_js']
-            }
-        },
-        'http_headers': {
-            'User-Agent': 'com.google.android.youtube/19.05.36 (Linux; U; Android 11; en_US; Pixel 4) gzip',
-            'Accept': '*/*',
-            'Connection': 'keep-alive',
-        }
+        'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36'}
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(f"ytsearch1:{q} official audio", download=False)
-        if 'entries' in info:
-            info = info['entries'][0]
-        return info.get('url'), info.get('title'), info.get('uploader')
 
-# --- HANDLERS ---
+    for query in search_queries:
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(query, download=False)
+                if info and 'entries' in info and len(info['entries']) > 0:
+                    target = info['entries'][0]
+                    return target.get('url'), target.get('title'), target.get('uploader')
+        except Exception as e:
+            print(f"Query {query} failed: {e}")
+            continue
+    return None, None, None
+
 async def start_cmd(u: Update, c: ContextTypes.DEFAULT_TYPE):
     await u.message.reply_text(WELCOME, parse_mode='Markdown')
 
@@ -76,11 +69,11 @@ async def handle_everything(u: Update, c: ContextTypes.DEFAULT_TYPE):
                 caption=CREDIT, 
                 parse_mode='Markdown'
             )
+        else:
+            print("No results found on any platform.")
     except Exception as e:
-        # If it still fails, the IP is hard-blocked. 
-        print(f"CRITICAL BLOCK: {e}")
+        print(f"Final Error: {e}")
 
-# --- EXECUTION ---
 async def main():
     threading.Thread(target=run, daemon=True).start()
     bot = Application.builder().token(TOKEN).build()
