@@ -33,7 +33,8 @@ if cookie_data:
 # --- THE STREAMING ENGINE ---
 def get_audio_stream(q):
     opts = {
-        'format': 'bestaudio/best',
+        # 'best' instead of just 'bestaudio' fixes the "Format not available" error
+        'format': 'bestaudio/best', 
         'quiet': True,
         'no_warnings': True,
         'default_search': 'ytsearch1',
@@ -41,12 +42,18 @@ def get_audio_stream(q):
         'geo_bypass': True,
         'skip_download': True,
         'cookiefile': COOKIE_FILE if os.path.exists(COOKIE_FILE) else None,
-        'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36'}
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        }
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(q, download=False)
-        if 'entries' in info: info = info['entries'][0]
-        return info['url'], info.get('title'), info.get('uploader')
+        # We add 'official audio' to the search to get cleaner files
+        info = ydl.extract_info(f"{q} official audio", download=False)
+        if 'entries' in info:
+            info = info['entries'][0]
+        
+        # This gets the direct streaming URL
+        return info.get('url'), info.get('title'), info.get('uploader')
 
 # --- HANDLERS ---
 async def start_cmd(u: Update, c: ContextTypes.DEFAULT_TYPE):
@@ -56,18 +63,18 @@ async def handle_request(u: Update, c: ContextTypes.DEFAULT_TYPE):
     if not u.message or not u.message.text: return
     raw_text = u.message.text.strip()
     
-    # Ignore /start command here
+    # Ignore /start command
     if raw_text.lower().startswith("/start"): return
 
-    # Clean the query (handles !, /, get, etc.)
+    # Clean the query (handles !, /, #, get, lr, or just song name)
     query = re.sub(r'^[!/#]|^get\s+|^lr\s+', '', raw_text, flags=re.IGNORECASE).strip()
     if not query: return
     
     try:
-        # Direct stream fetch
+        # Fetching direct link (No disk usage = Faster)
         stream_url, title, art = await asyncio.to_thread(get_audio_stream, query)
         
-        # Send audio directly
+        # Sending directly to Telegram
         await u.message.reply_audio(
             audio=stream_url, 
             title=title, 
@@ -75,23 +82,26 @@ async def handle_request(u: Update, c: ContextTypes.DEFAULT_TYPE):
             caption=CREDIT, 
             parse_mode='Markdown'
         )
-    except:
-        pass
+    except Exception as e:
+        # If it fails, print the error to Railway logs but keep the chat clean
+        print(f"Fetch Error: {e}")
 
 # --- EXECUTION ---
 async def main():
     threading.Thread(target=run, daemon=True).start()
+    
+    # drop_pending_updates=True kills old message lag
     bot = Application.builder().token(TOKEN).build()
     
     bot.add_handler(CommandHandler("start", start_cmd))
     bot.add_handler(MessageHandler(filters.TEXT, handle_request))
     
-    print("Zero-Fluff + Cookies Active ----")
+    print("ULTRA-SPEED MODE ACTIVE ----")
     print("Dev -> @FUCXD")
 
     await bot.initialize()
     await bot.start()
-    await bot.updater.start_polling(drop_pending_updates=True) # Kills session conflicts
+    await bot.updater.start_polling(drop_pending_updates=True)
     while True: await asyncio.sleep(10)
 
 if __name__ == '__main__':
