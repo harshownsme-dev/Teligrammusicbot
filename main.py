@@ -6,7 +6,7 @@ from telegram.ext import Application, MessageHandler, CommandHandler, filters, C
 # --- RAILWAY 24/7 ---
 app = Flask(__name__)
 @app.route('/')
-def h(): return "Bot Active"
+def h(): return "Active"
 def run(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 
 # --- AUTO-INSTALLER ---
@@ -33,8 +33,8 @@ if cookie_data:
 # --- THE STREAMING ENGINE ---
 def get_audio_stream(q):
     opts = {
-        # 'best' instead of just 'bestaudio' fixes the "Format not available" error
-        'format': 'bestaudio/best', 
+        # 'best' is the key here - it grabs whatever is available first
+        'format': 'best', 
         'quiet': True,
         'no_warnings': True,
         'default_search': 'ytsearch1',
@@ -44,59 +44,61 @@ def get_audio_stream(q):
         'cookiefile': COOKIE_FILE if os.path.exists(COOKIE_FILE) else None,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': '*/*',
+            'Connection': 'keep-alive',
         }
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
-        # We add 'official audio' to the search to get cleaner files
-        info = ydl.extract_info(f"{q} official audio", download=False)
+        # Search for the song + official audio
+        info = ydl.extract_info(f"ytsearch1:{q} official audio", download=False)
         if 'entries' in info:
             info = info['entries'][0]
-        
-        # This gets the direct streaming URL
         return info.get('url'), info.get('title'), info.get('uploader')
 
 # --- HANDLERS ---
 async def start_cmd(u: Update, c: ContextTypes.DEFAULT_TYPE):
     await u.message.reply_text(WELCOME, parse_mode='Markdown')
 
-async def handle_request(u: Update, c: ContextTypes.DEFAULT_TYPE):
+async def handle_everything(u: Update, c: ContextTypes.DEFAULT_TYPE):
+    # Safety checks
     if not u.message or not u.message.text: return
-    raw_text = u.message.text.strip()
+    text = u.message.text.strip()
     
-    # Ignore /start command
-    if raw_text.lower().startswith("/start"): return
+    # Skip if it's just the start command
+    if text.lower().startswith("/start"): return
 
-    # Clean the query (handles !, /, #, get, lr, or just song name)
-    query = re.sub(r'^[!/#]|^get\s+|^lr\s+', '', raw_text, flags=re.IGNORECASE).strip()
+    # Clean the query (handles !, /, #, get, or plain text)
+    query = re.sub(r'^[!/#]|^get\s+|^lr\s+', '', text, flags=re.IGNORECASE).strip()
     if not query: return
     
     try:
-        # Fetching direct link (No disk usage = Faster)
-        stream_url, title, art = await asyncio.to_thread(get_audio_stream, query)
+        # We don't send any "Searching" text for max speed
+        stream_url, title, artist = await asyncio.to_thread(get_audio_stream, query)
         
-        # Sending directly to Telegram
-        await u.message.reply_audio(
-            audio=stream_url, 
-            title=title, 
-            performer=art, 
-            caption=CREDIT, 
-            parse_mode='Markdown'
-        )
+        if stream_url:
+            await u.message.reply_audio(
+                audio=stream_url, 
+                title=title, 
+                performer=artist, 
+                caption=CREDIT, 
+                parse_mode='Markdown'
+            )
     except Exception as e:
-        # If it fails, print the error to Railway logs but keep the chat clean
         print(f"Fetch Error: {e}")
 
 # --- EXECUTION ---
 async def main():
     threading.Thread(target=run, daemon=True).start()
     
-    # drop_pending_updates=True kills old message lag
+    # drop_pending_updates=True is CRITICAL to stop the 'Conflict' error
     bot = Application.builder().token(TOKEN).build()
     
+    # Order matters: check for /start first, then catch everything else
     bot.add_handler(CommandHandler("start", start_cmd))
-    bot.add_handler(MessageHandler(filters.TEXT, handle_request))
+    bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_everything))
+    bot.add_handler(MessageHandler(filters.COMMAND, handle_everything)) # Catches /get, !get, etc.
     
-    print("ULTRA-SPEED MODE ACTIVE ----")
+    print("ULTRA-SPEED HYBRID ACTIVE ----")
     print("Dev -> @FUCXD")
 
     await bot.initialize()
