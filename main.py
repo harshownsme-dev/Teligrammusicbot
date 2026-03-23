@@ -1,39 +1,93 @@
 import os, subprocess, sys, asyncio, threading
 from flask import Flask
 from telegram import Update
-from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# --- RAILWAY 24/7 HEALTH CHECK ---
-app_railway = Flask(__name__)
-@app_railway.route('/')
-def home(): return "Bot is Running"
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app_railway.run(host='0.0.0.0', port=port)
+# --- RAILWAY 24/7 ---
+app = Flask(__name__)
+@app.route('/')
+def h(): return "Bot Active"
+def run():
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 
-# --- AUTO INSTALLER ---
-def install_libs():
-    libs = {'python-telegram-bot': 'telegram', 'yt-dlp': 'yt_dlp', 'flask': 'flask'}
-    for lib_name, import_name in libs.items():
-        try: __import__(import_name)
-        except ImportError: subprocess.check_call([sys.executable, "-m", "pip", "install", lib_name, "--quiet"])
+# --- FAST-INSTALLER ---
+def init():
+    for lib in ['python-telegram-bot', 'yt-dlp', 'flask']:
+        try: __import__(lib.replace('-', '_'))
+        except: subprocess.check_call([sys.executable, "-m", "pip", "install", lib, "--quiet"])
 
-install_libs()
+init()
 import yt_dlp
 
-# --- CONFIG (WITH FALLBACK) ---
+# --- CONFIG ---
 TOKEN = os.environ.get('BOT_TOKEN') or '8595967891:AAHS1PE2om3824-l1ualhUNSQhe7MyNavVw'
-CREDIT_TEXT = "***Developed by [ @FUCXD ]💀***"
+CREDIT = "***Developed by [ @FUCXD ]💀***"
 
-# --- HIGH-SPEED DOWNLOAD ENGINE ---
-def fast_download(query):
+# --- THE "STREAMING" ENGINE (DIRECT FETCH) ---
+def fetch_direct_url(query):
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': 's.%(ext)s',
-        'noplaylist': True,
         'quiet': True,
         'no_warnings': True,
         'default_search': 'ytsearch1',
+        'nocheckcertificate': True,
+        'geo_bypass': True,
+        'skip_download': True, # DO NOT INSTALL THE FILE
+        'force_generic_extractor': False,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        # Just getting the link and metadata, not the file
+        info = ydl.extract_info(query, download=False)
+        if 'entries' in info: info = info['entries'][0]
+        
+        # This is the "Secret" direct link to the audio stream
+        return info['url'], info.get('title'), info.get('uploader')
+
+# --- COMMANDS ---
+async def start(u: Update, c: ContextTypes.DEFAULT_TYPE):
+    await u.message.reply_text("***Bot alive Devloper -> [ @FUCXD ]💀***", parse_mode='Markdown')
+
+async def get(u: Update, c: ContextTypes.DEFAULT_TYPE):
+    if not c.args: return
+    query = " ".join(c.args)
+    status = await u.message.reply_text("🚀") # Rocket for speed
+    
+    try:
+        # Fetching ONLY the URL (Takes <1 second)
+        stream_url, title, artist = await asyncio.to_thread(fetch_direct_url, query)
+        
+        # Tell Telegram to fetch the audio directly from the stream_url
+        # This skips the Railway download entirely
+        await u.message.reply_audio(
+            audio=stream_url, 
+            title=title, 
+            performer=artist, 
+            caption=CREDIT, 
+            parse_mode='Markdown'
+        )
+        await status.delete()
+    except Exception:
+        await status.edit_text("❌ **Direct fetch failed. Use a link!**")
+
+# --- EXECUTION ---
+async def main():
+    threading.Thread(target=run, daemon=True).start()
+    
+    # drop_pending_updates=True clears the 'Conflict' error instantly
+    bot = Application.builder().token(TOKEN).build()
+    bot.add_handler(CommandHandler("start", start))
+    bot.add_handler(CommandHandler("get", get))
+    
+    print("Direct Stream Mode Active ----")
+    print("Dev -> @FUCXD")
+
+    await bot.initialize()
+    await bot.start()
+    await bot.updater.start_polling(drop_pending_updates=True)
+    while True: await asyncio.sleep(10)
+
+if __name__ == '__main__':
+    asyncio.run(main())
         'nocheckcertificate': True,
         'geo_bypass': True,
         'extract_flat': False,
